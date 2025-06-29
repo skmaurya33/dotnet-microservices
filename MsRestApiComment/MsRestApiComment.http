@@ -1,0 +1,6 @@
+@MsRestApiComment_HostAddress = http://localhost:5188
+
+GET {{MsRestApiComment_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

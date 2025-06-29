@@ -1,0 +1,6 @@
+@MsRestApiBlog_HostAddress = http://localhost:5161
+
+GET {{MsRestApiBlog_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

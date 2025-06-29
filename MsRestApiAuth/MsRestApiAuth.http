@@ -1,0 +1,6 @@
+@MsRestApiAuth_HostAddress = http://localhost:5286
+
+GET {{MsRestApiAuth_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

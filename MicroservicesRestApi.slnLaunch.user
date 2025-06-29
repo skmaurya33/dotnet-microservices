@@ -1,0 +1,19 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "MsRestApiAuth\\MsRestApiAuth.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "MsRestApiBlog\\MsRestApiBlog.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "MsRestApiComment\\MsRestApiComment.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
