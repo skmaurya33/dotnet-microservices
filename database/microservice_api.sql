@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jun 29, 2025 at 06:12 PM
+-- Generation Time: Jun 29, 2025 at 06:26 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -72,6 +72,32 @@ INSERT INTO `comments` (`Id`, `UserId`, `BlogId`, `Description`, `CreatedAt`, `U
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `notifications`
+--
+
+CREATE TABLE `notifications` (
+  `Id` int(11) NOT NULL,
+  `FromUserId` int(11) NOT NULL,
+  `ToUserId` int(11) NOT NULL,
+  `BlogId` int(11) NOT NULL,
+  `CommentId` int(11) NOT NULL,
+  `Description` longtext NOT NULL,
+  `CreatedAt` timestamp NOT NULL DEFAULT current_timestamp(),
+  `UpdatedAt` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `notifications`
+--
+
+INSERT INTO `notifications` (`Id`, `FromUserId`, `ToUserId`, `BlogId`, `CommentId`, `Description`, `CreatedAt`, `UpdatedAt`) VALUES
+(1, 0, 0, 0, 0, 'suraj@mindrops.com', '2025-06-28 08:29:26', '2025-06-28 08:29:26'),
+(3, 0, 0, 0, 0, 'user@example.com', '2025-06-28 08:29:26', '2025-06-28 08:29:26'),
+(6, 0, 0, 0, 0, 'string', '2025-06-28 08:29:26', '2025-06-28 03:46:51');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `users`
 --
 
@@ -128,6 +154,12 @@ ALTER TABLE `comments`
   ADD PRIMARY KEY (`Id`);
 
 --
+-- Indexes for table `notifications`
+--
+ALTER TABLE `notifications`
+  ADD PRIMARY KEY (`Id`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -153,6 +185,12 @@ ALTER TABLE `blogs`
 -- AUTO_INCREMENT for table `comments`
 --
 ALTER TABLE `comments`
+  MODIFY `Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+
+--
+-- AUTO_INCREMENT for table `notifications`
+--
+ALTER TABLE `notifications`
   MODIFY `Id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --

@@ -2,7 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using MsRestApiAuth.Context;
-using MsRestApiAuth.Models;
+using MsRestApiAuth.Domain.Entities;
+using MsRestApiAuth.Domain.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;

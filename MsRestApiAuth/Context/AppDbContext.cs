@@ -1,5 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using MsRestApiAuth.Models;
+using MsRestApiAuth.Domain.Entities;
 
 namespace MsRestApiAuth.Context
 {
@@ -10,5 +10,6 @@ namespace MsRestApiAuth.Context
 		}
 
 		public DbSet<User> Users { get; set; }
+		public DbSet<Notification> Notifications { get; set; }
 	}
 }

@@ -1,6 +1,6 @@
-
 using Microsoft.EntityFrameworkCore;
 using MsRestApiBlog.Context;
+using MsRestApiBlog.Services;
 
 namespace MsRestApiBlog
 {
@@ -16,6 +16,13 @@ namespace MsRestApiBlog
 			var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
 			builder.Services.AddDbContext<AppDbContext>(options => options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+
+			// Register HttpClient and Services
+			builder.Services.AddHttpClient<IUserService, UserService>();
+			builder.Services.AddScoped<IUserService, UserService>();
+			
+			// ✅ Add Memory Cache for user data caching
+			builder.Services.AddMemoryCache();
 
 
 			var jwtConfig = builder.Configuration.GetSection("Jwt");
