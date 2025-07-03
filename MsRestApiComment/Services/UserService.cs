@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Caching.Memory;
-using MsRestApiBlog.Models;
+using MsRestApiComment.Models;
 using System.Text.Json;
 
-namespace MsRestApiBlog.Services
+namespace MsRestApiComment.Services
 {
     public interface IUserService
     {

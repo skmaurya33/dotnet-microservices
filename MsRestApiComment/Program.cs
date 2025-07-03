@@ -1,6 +1,6 @@
-
 using Microsoft.EntityFrameworkCore;
 using MsRestApiComment.Context;
+using MsRestApiComment.Services;
 
 namespace MsRestApiComment
 {
@@ -15,7 +15,12 @@ namespace MsRestApiComment
 			var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 			builder.Services.AddDbContext<AppDbContext>(options => options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
-
+			// Register HttpClient and Services
+			builder.Services.AddHttpClient<IUserService, UserService>();
+			builder.Services.AddScoped<IUserService, UserService>();
+			
+			// ✅ Add Memory Cache for user data caching
+			builder.Services.AddMemoryCache();
 
 			var jwtConfig = builder.Configuration.GetSection("Jwt");
 
@@ -34,12 +39,9 @@ namespace MsRestApiComment
 					};
 				});
 
-
-
 			builder.Services.AddControllers();
 			// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 			builder.Services.AddEndpointsApiExplorer();
-
 
 			builder.Services.AddSwaggerGen(c =>
 			{
@@ -82,8 +84,8 @@ namespace MsRestApiComment
 
 			app.UseHttpsRedirection();
 
+			app.UseAuthentication();
 			app.UseAuthorization();
-
 
 			app.MapControllers();
 
