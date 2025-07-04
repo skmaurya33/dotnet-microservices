@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using MsRestApiComment.Context;
 using MsRestApiComment.Models;
 using MsRestApiComment.Services;
+using Shared.Messages;
+using NServiceBus;
 using System.Security.Claims;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
@@ -17,11 +19,15 @@ namespace MsRestApiComment.Controllers
 	{
 		private readonly AppDbContext _context;
 		private readonly IUserService _userService;
+		private readonly IMessageSession _messageSession;
+		private readonly ILogger<CommentController> _logger;
 
-		public CommentController(AppDbContext context, IUserService userService)
+		public CommentController(AppDbContext context, IUserService userService, IMessageSession messageSession, ILogger<CommentController> logger)
 		{
 			_context = context;
 			_userService = userService;
+			_messageSession = messageSession;
+			_logger = logger;
 		}
 
 		// Helper method to extract JWT token from Authorization header
@@ -111,22 +117,60 @@ namespace MsRestApiComment.Controllers
 		[HttpPost]
 		public async Task<IActionResult> Post([FromBody] Comment value)
 		{
+			_logger.LogInformation("Starting comment creation process");
+
 			int userId = Convert.ToInt32(User.FindFirstValue(ClaimTypes.NameIdentifier));
+			_logger.LogInformation($"Creating comment for UserId: {userId}, BlogId: {value.BlogId}");
 
 			value.UserId = userId;
 			value.CreatedAt = DateTime.UtcNow;
 			value.UpdatedAt = DateTime.UtcNow; // Fixed: was CreatedAt twice
 
 			_context.Comments.Add(value);
-
-			// Write the service bus event logic to notify the auth api to update the notification table
-			/*
-			 
-			 
-			 */
-
 			await _context.SaveChangesAsync();
-			return Ok();
+
+			// ✅ Method 1: Direct access to the ID (auto-populated by EF)
+			var newCommentId = value.Id; // This is your newly generated PkId!
+			_logger.LogInformation($"Comment saved successfully with ID: {newCommentId}");
+
+			// ✅ Alternative methods:
+			// Method 2: Query back the entity (if you need fresh data)
+			// var savedComment = await _context.Comments.FindAsync(value.Id);
+			
+			// Method 3: Use the entity tracking to get the ID
+			// var entityEntry = _context.Entry(value);
+			// var idValue = entityEntry.Property(nameof(Comment.Id)).CurrentValue;
+
+			try
+			{
+				// ✅ Publish CommentCreatedEvent using NServiceBus
+				var commentCreatedEvent = new CommentCreatedEvent
+				{
+					CommentId = newCommentId, // Use the newly generated ID
+					UserId = value.UserId,
+					BlogId = value.BlogId,
+					Description = value.Description,
+					CreatedAt = value.CreatedAt
+				};
+
+				_logger.LogInformation($"Publishing CommentCreatedEvent: CommentId={commentCreatedEvent.CommentId}, UserId={commentCreatedEvent.UserId}, BlogId={commentCreatedEvent.BlogId}");
+
+				await _messageSession.Publish(commentCreatedEvent);
+
+				_logger.LogInformation("CommentCreatedEvent published successfully!");
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, $"Failed to publish CommentCreatedEvent for CommentId: {newCommentId}");
+				// Don't fail the request if event publishing fails
+			}
+
+			// ✅ Return the newly created comment with its ID
+			return Ok(new { 
+				Id = newCommentId,
+				Message = "Comment created successfully",
+				CommentId = newCommentId 
+			});
 		}
 
 		// PUT api/<CommentController>/5
@@ -158,6 +202,44 @@ namespace MsRestApiComment.Controllers
 				return Ok();
 			}
 			return NotFound();
+		}
+
+		// ✅ Test endpoint to verify Azure Service Bus connection
+		[HttpPost("test-event")]
+		public async Task<IActionResult> TestEvent()
+		{
+			_logger.LogInformation("Testing Azure Service Bus event publishing...");
+
+			try
+			{
+				var testEvent = new CommentCreatedEvent
+				{
+					CommentId = 999,
+					UserId = 1,
+					BlogId = 1,
+					Description = "Test event from API",
+					CreatedAt = DateTime.UtcNow
+				};
+
+				_logger.LogInformation($"Publishing test event: CommentId={testEvent.CommentId}");
+
+				await _messageSession.Publish(testEvent);
+
+				_logger.LogInformation("✅ Test event published successfully!");
+
+				return Ok(new { 
+					Message = "Test event published successfully",
+					TestEvent = testEvent 
+				});
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "❌ Failed to publish test event");
+				return StatusCode(500, new { 
+					Message = "Failed to publish test event",
+					Error = ex.Message 
+				});
+			}
 		}
 	}
 }

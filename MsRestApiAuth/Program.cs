@@ -1,6 +1,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using MsRestApiAuth.Context;
+using NServiceBus;
 
 namespace MsRestApiAuth
 {
@@ -8,20 +9,66 @@ namespace MsRestApiAuth
 	{
 		public static void Main(string[] args)
 		{
-			var builder = WebApplication.CreateBuilder(args);
+			CreateHostBuilder(args).Build().Run();
+		}
 
-			// Add services to the container.
+		public static IHostBuilder CreateHostBuilder(string[] args) =>
+			Host.CreateDefaultBuilder(args)
+				.UseNServiceBus(context =>
+				{
+					var endpointConfiguration = new EndpointConfiguration("MsRestApiAuth");
+					
+					// ✅ Enable auto-creation of queues and topics (for development)
+					endpointConfiguration.EnableInstallers();
+					
+					// Configure Azure Service Bus transport
+					var azureServiceBusConnectionString = context.Configuration.GetConnectionString("AzureServiceBus");
+					var transport = endpointConfiguration.UseTransport<AzureServiceBusTransport>();
+					transport.ConnectionString(azureServiceBusConnectionString);
+					
+					// ✅ Configure serialization (mandatory in NServiceBus 9.0+)
+					endpointConfiguration.UseSerialization<SystemJsonSerializer>();
+					
+					// Configure error handling
+					endpointConfiguration.SendFailedMessagesTo("error");
+					endpointConfiguration.AuditProcessedMessagesTo("audit");
+					
+					// This service only receives messages, no routing needed
+					
+					return endpointConfiguration;
+				})
+				.ConfigureWebHostDefaults(webBuilder =>
+				{
+					webBuilder.UseStartup<Startup>();
+				});
+	}
 
+	public class Startup
+	{
+		public Startup(IConfiguration configuration)
+		{
+			Configuration = configuration;
+		}
 
+		public IConfiguration Configuration { get; }
+
+		public void ConfigureServices(IServiceCollection services)
+		{
 			// Register the DbContext with dependency injection
-			var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+			var connectionString = Configuration.GetConnectionString("DefaultConnection");
 
-			builder.Services.AddDbContext<AppDbContext>(options => options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+			services.AddDbContext<AppDbContext>(options => options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
+			// ✅ Add file logging
+			services.AddLogging(builder =>
+			{
+				builder.AddConsole(); // Keep console logging
+				builder.AddFile("Logs/auth-service-{Date}.txt"); // Add file logging
+			});
 
-			var jwtConfig = builder.Configuration.GetSection("Jwt");
+			var jwtConfig = Configuration.GetSection("Jwt");
 
-			builder.Services.AddAuthentication("Bearer")
+			services.AddAuthentication("Bearer")
 				.AddJwtBearer("Bearer", options =>
 				{
 					options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
@@ -36,13 +83,11 @@ namespace MsRestApiAuth
 					};
 				});
 
-
-			builder.Services.AddControllers();
+			services.AddControllers();
 			// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-			builder.Services.AddEndpointsApiExplorer();
+			services.AddEndpointsApiExplorer();
 
-
-			builder.Services.AddSwaggerGen(c =>
+			services.AddSwaggerGen(c =>
 			{
 				c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
 				{
@@ -53,7 +98,7 @@ namespace MsRestApiAuth
 					Scheme = "Bearer"
 				});
 
-				c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+				c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement()
 				{
 					{
 						new Microsoft.OpenApi.Models.OpenApiSecurityScheme
@@ -65,32 +110,37 @@ namespace MsRestApiAuth
 							},
 							Scheme = "oauth2",
 							Name = "Bearer",
-							In = Microsoft.OpenApi.Models.ParameterLocation.Header
+							In = Microsoft.OpenApi.Models.ParameterLocation.Header,
 						},
-						new string[] {}
+						new List<string>()
 					}
 				});
 			});
+		}
 
-
-			var app = builder.Build();
-
+		public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+		{
 			// Configure the HTTP request pipeline.
-			if (app.Environment.IsDevelopment())
+			if (env.IsDevelopment())
 			{
 				app.UseSwagger();
 				app.UseSwaggerUI();
 			}
 
-			app.UseHttpsRedirection();
-
+			// ✅ 1. Authentication validates JWT tokens
 			app.UseAuthentication();
+
+			// ✅ 2. Routing determines which endpoint to call
+			app.UseRouting();
+
+			// ✅ 3. Authorization checks permissions (MUST be between UseRouting and UseEndpoints)
 			app.UseAuthorization();
 
-
-			app.MapControllers();
-
-			app.Run();
+			// ✅ 4. Execute the endpoints
+			app.UseEndpoints(endpoints =>
+			{
+				endpoints.MapControllers();
+			});
 		}
 	}
 }
