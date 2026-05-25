@@ -3,6 +3,7 @@ using MsRestApiComment.Context;
 using Shared.Messages;
 using MsRestApiComment.Services;
 using NServiceBus;
+using Microsoft.OpenApi.Models;
 
 namespace MsRestApiComment
 {
@@ -10,73 +11,59 @@ namespace MsRestApiComment
 	{
 		public static void Main(string[] args)
 		{
-			CreateHostBuilder(args).Build().Run();
-		}
+			var builder = WebApplication.CreateBuilder(args);
 
-		public static IHostBuilder CreateHostBuilder(string[] args) =>
-			Host.CreateDefaultBuilder(args)
-				.UseNServiceBus(context =>
-				{
-					var endpointConfiguration = new EndpointConfiguration("MsRestApiComment");
-					
-					// ✅ Enable auto-creation of queues and topics (for development)
-					endpointConfiguration.EnableInstallers();
-					
-					// Configure Azure Service Bus transport
-					var azureServiceBusConnectionString = context.Configuration.GetConnectionString("AzureServiceBus");
-					var transport = endpointConfiguration.UseTransport<AzureServiceBusTransport>();
-					transport.ConnectionString(azureServiceBusConnectionString);
-					
-					// ✅ Configure serialization (mandatory in NServiceBus 9.0+)
-					endpointConfiguration.UseSerialization<SystemJsonSerializer>();
-					
-					// Configure error handling
-					endpointConfiguration.SendFailedMessagesTo("error");
-					endpointConfiguration.AuditProcessedMessagesTo("audit");
-					
-					// Configure routing - specify where to send events
-					var routing = transport.Routing();
-					routing.RouteToEndpoint(typeof(Shared.Messages.CommentCreatedEvent), "MsRestApiAuth");
-					
-					return endpointConfiguration;
-				})
-				.ConfigureWebHostDefaults(webBuilder =>
-				{
-					webBuilder.UseStartup<Startup>();
-				});
-	}
-
-	public class Startup
-	{
-		public Startup(IConfiguration configuration)
-		{
-			Configuration = configuration;
-		}
-
-		public IConfiguration Configuration { get; }
-
-		public void ConfigureServices(IServiceCollection services)
-		{
-			var connectionString = Configuration.GetConnectionString("DefaultConnection");
-			services.AddDbContext<AppDbContext>(options => options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
-
-			// Register HttpClient and Services
-			services.AddHttpClient<IUserService, UserService>();
-			services.AddScoped<IUserService, UserService>();
-			
-			// ✅ Add Memory Cache for user data caching
-			services.AddMemoryCache();
-
-			// ✅ Add file logging
-			services.AddLogging(builder =>
+			// ✅ Configure NServiceBus
+			builder.Host.UseNServiceBus(context =>
 			{
-				builder.AddConsole(); // Keep console logging
-				builder.AddFile("Logs/comment-service-{Date}.txt"); // Add file logging
+				var endpointConfiguration = new EndpointConfiguration("sbq-dev01-poc-MsRestApiComment");
+				
+				// Enable auto-creation of queues and topics (for development)
+				endpointConfiguration.EnableInstallers();
+				
+				// Configure Azure Service Bus transport
+				var azureServiceBusConnectionString = context.Configuration.GetConnectionString("AzureServiceBus");
+				var transport = endpointConfiguration.UseTransport<AzureServiceBusTransport>();
+				transport.ConnectionString(azureServiceBusConnectionString);
+				
+				// ✅ Custom topic name instead of "bundle-1"
+				transport.TopicName("sbt-dev01-poc-nservicebus");
+				
+				// Configure serialization (mandatory in NServiceBus 9.0+)
+				endpointConfiguration.UseSerialization<SystemJsonSerializer>();
+				
+				// Configure error handling
+				endpointConfiguration.SendFailedMessagesTo("sbq-dev01-poc-nservicebus-error");
+				endpointConfiguration.AuditProcessedMessagesTo("sbq-dev01-poc-nservicebus-audit");
+				
+				// Configure routing - specify where to send events
+				var routing = transport.Routing();
+				// Below (sbq-dev01-notification-poc) is the Queue name in service bus
+				routing.RouteToEndpoint(typeof(CommentCreatedEvent), "sbq-dev01-poc-MsRestApiAuth");
+				
+				return endpointConfiguration;
 			});
 
-			var jwtConfig = Configuration.GetSection("Jwt");
+			// ✅ Configure Database
+			var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+			builder.Services.AddDbContext<AppDbContext>(options => 
+				options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
-			services.AddAuthentication("Bearer")
+			// ✅ Configure Services
+			builder.Services.AddHttpClient<IUserService, UserService>();
+			builder.Services.AddScoped<IUserService, UserService>();
+			builder.Services.AddMemoryCache();
+
+			// ✅ Configure Logging
+			builder.Services.AddLogging(loggingBuilder =>
+			{
+				loggingBuilder.AddConsole();
+				loggingBuilder.AddFile("Logs/comment-service-{Date}.txt");
+			});
+
+			// ✅ Configure JWT Authentication
+			var jwtConfig = builder.Configuration.GetSection("Jwt");
+			builder.Services.AddAuthentication("Bearer")
 				.AddJwtBearer("Bearer", options =>
 				{
 					options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
@@ -87,67 +74,64 @@ namespace MsRestApiComment
 						ValidateIssuerSigningKey = true,
 						ValidIssuer = jwtConfig["Issuer"],
 						ValidAudience = jwtConfig["Audience"],
-						IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtConfig["Key"]!))
+						IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+							System.Text.Encoding.UTF8.GetBytes(jwtConfig["Key"]!))
 					};
 				});
 
-			services.AddControllers();
-			// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-			services.AddEndpointsApiExplorer();
-			services.AddSwaggerGen(c =>
+			// ✅ Configure Controllers and Swagger
+			builder.Services.AddControllers();
+			builder.Services.AddEndpointsApiExplorer();
+			builder.Services.AddSwaggerGen(c =>
 			{
-				c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+				c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
 				{
 					Description = "JWT Authorization header using the Bearer scheme. <br><br>Example: \"Bearer xxxxxxxxxxxxxxxxx...\"",
 					Name = "Authorization",
-					In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-					Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+					In = ParameterLocation.Header,
+					Type = SecuritySchemeType.ApiKey,
 					Scheme = "Bearer"
 				});
 
-				c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement()
+				c.AddSecurityRequirement(new OpenApiSecurityRequirement()
 				{
 					{
-						new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+						new OpenApiSecurityScheme
 						{
-							Reference = new Microsoft.OpenApi.Models.OpenApiReference
+							Reference = new OpenApiReference
 							{
-								Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+								Type = ReferenceType.SecurityScheme,
 								Id = "Bearer"
 							},
 							Scheme = "oauth2",
 							Name = "Bearer",
-							In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+							In = ParameterLocation.Header,
 						},
 						new List<string>()
 					}
 				});
 			});
-		}
 
-		public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-		{
-			// Configure the HTTP request pipeline.
-			if (env.IsDevelopment())
+			// ✅ Build the application
+			var app = builder.Build();
+
+			// ✅ Configure the HTTP request pipeline
+			if (app.Environment.IsDevelopment())
 			{
 				app.UseSwagger();
 				app.UseSwaggerUI();
 			}
 
-			// ✅ 1. Authentication validates JWT tokens
+			// Authentication & Authorization pipeline
 			app.UseAuthentication();
-			
-			// ✅ 2. Routing determines which endpoint to call
 			app.UseRouting();
-			
-			// ✅ 3. Authorization checks permissions (MUST be between UseRouting and UseEndpoints)
 			app.UseAuthorization();
 
-			// ✅ 4. Execute the endpoints
-			app.UseEndpoints(endpoints =>
-			{
-				endpoints.MapControllers();
-			});
+			// Map controllers
+			app.MapControllers();
+
+			// ✅ Run the application
+			app.Run();
 		}
 	}
 }

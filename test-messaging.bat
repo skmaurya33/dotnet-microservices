@@ -1,5 +1,6 @@
 @echo off
 echo Testing NServiceBus messaging system...
+echo Both services now use the same queue: sbq-dev01-notification-poc
 echo.
 
 echo 1. Testing the test endpoint (no auth required)
